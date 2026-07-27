@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CS Dashboard</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root{
+    --brand:#4437B8; --brand-dark:#342a92; --bg:#f4f5fa; --card:#ffffff;
+    --text:#1e2235; --muted:#6b7188; --border:#e3e5ef; --danger:#c0392b; --ok:#1e8e5a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+  /* ---------- Login screen ---------- */
+  #loginScreen{display:flex;align-items:center;justify-content:center;min-height:100vh}
+  .login-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:48px 56px;text-align:center;box-shadow:0 8px 30px rgba(30,34,53,.08);max-width:420px;width:92%}
+  .login-card h1{font-size:22px;margin-bottom:6px}
+  .login-card p{color:var(--muted);font-size:14px;margin-bottom:28px}
+  .logo-dot{width:44px;height:44px;border-radius:12px;background:var(--brand);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;margin-bottom:16px}
+  #gBtn{display:flex;justify-content:center}
+  .login-err{color:var(--danger);font-size:13px;margin-top:16px;display:none}
+
+  /* ---------- App shell ---------- */
+  #app{display:none;flex-direction:column;min-height:100vh}
+  header{background:var(--card);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;gap:16px;height:60px;position:sticky;top:0;z-index:10}
+  header .title{font-weight:700;font-size:16px}
+  header .spacer{flex:1}
+  .role-chip{font-size:12px;font-weight:600;padding:4px 12px;border-radius:999px;background:#ede9ff;color:var(--brand);text-transform:uppercase;letter-spacing:.4px}
+  .user-box{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+  .user-box img{width:30px;height:30px;border-radius:50%}
+  .btn{border:1px solid var(--border);background:var(--card);color:var(--text);padding:6px 14px;border-radius:8px;font-size:13px;cursor:pointer}
+  .btn:hover{background:var(--bg)}
+
+  /* ---------- Tabs ---------- */
+  nav{background:var(--card);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:4px}
+  nav button{border:none;background:none;padding:12px 18px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent}
+  nav button.active{color:var(--brand);border-bottom-color:var(--brand)}
+  nav button:hover{color:var(--brand)}
+
+  .scope-bar{padding:8px 24px;font-size:12.5px;color:var(--muted);background:#fbfbfe;border-bottom:1px solid var(--border)}
+  .scope-bar b{color:var(--text)}
+  .owner-bar{display:none;align-items:center;gap:8px;padding:8px 24px;background:#fff7e6;border-bottom:1px solid #f0e0bb;font-size:13px}
+  .owner-bar input{border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;min-width:280px}
+  .scope-bar a{color:var(--brand);cursor:pointer;text-decoration:underline}
+  #emailList{display:none;margin-top:6px;line-height:1.7;word-break:break-all}
+
+  main{flex:1;display:flex;flex-direction:column}
+  .tab-pane{display:none;flex:1}
+  .tab-pane.active{display:flex}
+  .tab-pane iframe{flex:1;width:100%;border:none;min-height:calc(100vh - 150px)}
+
+  /* ---------- States ---------- */
+  .state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 24px;text-align:center;gap:12px}
+  .state h2{font-size:18px}
+  .state p{color:var(--muted);font-size:14px;max-width:480px}
+  .spinner{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- ================================================================
+  CONFIGURATION — edit everything in this block, nothing else needed
+================================================================= -->
+<script>
+const CONFIG = {
+
+  // 1. Google OAuth Client ID (Google Cloud Console → Credentials)
+  GOOGLE_CLIENT_ID: "715566670321-cpaa89flvddbnp4ams4icel9un4dt8fm.apps.googleusercontent.com",
+
+  // 2. Published Google Sheet CSV URL
+  //    In the sheet: File → Share → Publish to web → select the mapping
+  //    sheet/tab → CSV → Publish, then paste the generated link here.
+  SHEET_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTzwkEJMeoEt1t1cGlXVo8oeeTU5eL5pNmb-JIIqf5ax9Z1G7hZzM698WT14R4rQVgcjecWUDhPMPHT/pub?gid=0&single=true&output=csv",
+
+  // 3. Column headers in your mapping sheet (must match exactly, case-insensitive)
+  COLUMNS: {
+    spocEmail:    "CS SPOC Email",
+    managerEmail: "CS Manager Email",
+    headEmail:    "CS Head Email"
+  },
+
+  // 4. Zoho Analytics dashboard URL (the Users / Mets / MIO tabs live inside it)
+  DASHBOARD_URL: "https://analytics.zoho.in/open-view/446399000015410327",
+
+  // 5. Email filter columns in the Zoho dashboard, per role.
+  //    Because every data row carries all three columns, filtering a user's
+  //    own column automatically includes everyone below them in the hierarchy.
+  ZOHO_FILTER_COLUMNS: {
+    spoc:    "CS SPOC Email",
+    manager: "CS Manager Email",
+    head:    "CS Head Email"
+  },
+
+  // Optional: table name behind the dashboard, for fully-qualified criteria
+  // like "MyTable"."CS SPOC Email". Leave "" to use the column name alone —
+  // works when the column name is unambiguous across the dashboard's tables.
+  ZOHO_TABLE_NAME: "",
+
+  // 6. Full-access users — always see the entire dashboard, no email filter
+  ADMIN_EMAILS: [
+    "ajay.g@meritto.com",
+    "eshita.garg@meritto.com",
+    "alok.sharma@meritto.com",
+    "dheeraj.raj@meritto.com"
+  ],
+
+  // 7. Owner(s) — get a "Test as" box to preview the dashboard as any user
+  OWNER_EMAILS: [
+    "eshita.garg@meritto.com"
+  ]
+};
+</script>
+<!-- ============================================================ -->
+
+<!-- Login -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="logo-dot">CS</div>
+    <h1>CS Dashboard</h1>
+    <p>Sign in with your work Google account to view your mapped institutes.</p>
+    <div id="gBtn"></div>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app">
+  <header>
+    <span class="title">CS Dashboard</span>
+    <span class="role-chip" id="roleChip"></span>
+    <span class="spacer"></span>
+    <div class="user-box">
+      <img id="userPic" alt="">
+      <span id="userEmail"></span>
+    </div>
+    <button class="btn" onclick="signOut()">Sign out</button>
+  </header>
+
+  <div class="owner-bar" id="ownerBar">
+    <span><b>Owner test mode</b> — view as:</span>
+    <input id="viewAsInput" list="allEmails" placeholder="type or pick any email">
+    <datalist id="allEmails"></datalist>
+    <button class="btn" onclick="applyViewAs()">View</button>
+    <button class="btn" onclick="resetView()">Back to my view</button>
+  </div>
+
+  <div class="scope-bar" id="scopeBar"></div>
+
+  <nav id="tabNav"></nav>
+
+  <main id="mainArea">
+    <div class="state" id="loadingState"><div class="spinner"></div><p>Loading your access…</p></div>
+  </main>
+</div>
+
+<script>
+/* ================= Google Sign-In ================= */
+let currentUser = null;
+
+window.onload = () => {
+  google.accounts.id.initialize({
+    client_id: CONFIG.GOOGLE_CLIENT_ID,
+    callback: onCredential,
+    auto_select: true
+  });
+  google.accounts.id.renderButton(document.getElementById("gBtn"),
+    { theme: "outline", size: "large", width: 280, text: "signin_with" });
+};
+
+function decodeJwt(token){
+  const part = token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/");
+  return JSON.parse(decodeURIComponent(escape(atob(part))));
+}
+
+function onCredential(resp){
+  try {
+    const p = decodeJwt(resp.credential);
+    currentUser = { email: (p.email||"").toLowerCase().trim(), name: p.name||"", pic: p.picture||"" };
+    startApp();
+  } catch(e){
+    showLoginError("Could not read Google credentials. Please try again.");
+  }
+}
+
+function signOut(){
+  google.accounts.id.disableAutoSelect();
+  location.reload();
+}
+
+function showLoginError(msg){
+  const el = document.getElementById("loginErr");
+  el.textContent = msg; el.style.display = "block";
+}
+
+/* ================= Mapping sheet ================= */
+function parseCSV(text){
+  const rows = []; let row = [], field = "", inQ = false;
+  for (let i = 0; i < text.length; i++){
+    const c = text[i];
+    if (inQ){
+      if (c === '"'){ if (text[i+1] === '"'){ field += '"'; i++; } else inQ = false; }
+      else field += c;
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === ","){ row.push(field); field = ""; }
+      else if (c === "\n" || c === "\r"){
+        if (c === "\r" && text[i+1] === "\n") i++;
+        row.push(field); field = "";
+        if (row.some(v => v.trim() !== "")) rows.push(row);
+        row = [];
+      }
+      else field += c;
+    }
+  }
+  row.push(field);
+  if (row.some(v => v.trim() !== "")) rows.push(row);
+  return rows;
+}
+
+async function fetchMapping(){
+  const res = await fetch(CONFIG.SHEET_CSV_URL, { cache: "no-store" });
+  if (!res.ok) throw new Error("Sheet fetch failed (" + res.status + ")");
+  const rows = parseCSV(await res.text());
+  if (rows.length < 2) throw new Error("Mapping sheet appears to be empty.");
+  const headers = rows[0].map(h => h.trim().toLowerCase());
+  const col = name => headers.indexOf(name.trim().toLowerCase());
+  const idx = {
+    spoc:    col(CONFIG.COLUMNS.spocEmail),
+    manager: col(CONFIG.COLUMNS.managerEmail),
+    head:    col(CONFIG.COLUMNS.headEmail)
+  };
+  const missing = Object.entries(idx).filter(([,v]) => v === -1).map(([k]) => CONFIG.COLUMNS[k + "Email"] || k);
+  if (missing.length) throw new Error("Column(s) not found in sheet: " + missing.join(", "));
+  return rows.slice(1).map(r => ({
+    spoc:    (r[idx.spoc]    || "").toLowerCase().trim(),
+    manager: (r[idx.manager] || "").toLowerCase().trim(),
+    head:    (r[idx.head]    || "").toLowerCase().trim()
+  }));
+}
+
+/* ================= Hierarchy resolution =================
+   Every Zoho data row carries SPOC + Manager + Head emails, so
+   filtering the user's own column returns their whole subtree:
+   Head    → "CS Head Email"    = me  (all their managers & SPOCs)
+   Manager → "CS Manager Email" = me  (all their SPOCs)
+   SPOC    → "CS SPOC Email"    = me
+   A user holding multiple roles gets an OR of their columns.
+========================================================== */
+function resolveAccess(email, rows){
+  const roles = [];
+  const visible = new Set([email]);
+
+  rows.forEach(r => {
+    if (r.head === email){ if (r.manager) visible.add(r.manager); if (r.spoc) visible.add(r.spoc); }
+    if (r.manager === email){ if (r.spoc) visible.add(r.spoc); }
+  });
+  if (rows.some(r => r.head === email))    roles.push("head");
+  if (rows.some(r => r.manager === email)) roles.push("manager");
+  if (rows.some(r => r.spoc === email))    roles.push("spoc");
+
+  if (!roles.length) return null; // not in mapping
+  const label = roles.includes("head") ? "CS Head" : roles.includes("manager") ? "CS Manager" : "CS SPOC";
+  return { role: label, roles, emails: [...visible] };
+}
+
+/* ================= Zoho embed ================= */
+function colRef(col){
+  return (CONFIG.ZOHO_TABLE_NAME ? '"' + CONFIG.ZOHO_TABLE_NAME + '".' : "") + '"' + col + '"';
+}
+
+function buildDashboardUrl(roles, email){
+  const safe = email.replace(/'/g, "''");
+  const parts = roles.map(r => "(" + colRef(CONFIG.ZOHO_FILTER_COLUMNS[r]) + "='" + safe + "')");
+  const criteria = parts.join(" OR ");
+  const base = CONFIG.DASHBOARD_URL;
+  return base + (base.includes("?") ? "&" : "?") + "ZOHO_CRITERIA=" + encodeURIComponent(criteria);
+}
+
+/* ================= App flow ================= */
+let mappingRows = [];
+
+function isAdmin(e){ return CONFIG.ADMIN_EMAILS.some(a => a.toLowerCase().trim() === e); }
+function isOwner(e){ return CONFIG.OWNER_EMAILS.some(a => a.toLowerCase().trim() === e); }
+
+async function startApp(){
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("app").style.display = "flex";
+  document.getElementById("userEmail").textContent = currentUser.email;
+  document.getElementById("userPic").src = currentUser.pic;
+  document.getElementById("tabNav").style.display = "none"; // Users/Mets/MIO tabs render inside the Zoho dashboard itself
+
+  try {
+    mappingRows = await fetchMapping();
+  } catch(e){
+    document.getElementById("mainArea").innerHTML =
+      '<div class="state"><h2>Could not load access mapping</h2><p>' + e.message +
+      "</p><p>Check that the Google Sheet is published to the web as CSV and the URL in CONFIG is correct.</p></div>";
+    return;
+  }
+
+  if (isOwner(currentUser.email)) setupOwnerBar();
+  applyView(currentUser.email);
+}
+
+/* Owner "test as anyone" mode */
+function setupOwnerBar(){
+  document.getElementById("ownerBar").style.display = "flex";
+  const emails = new Set(CONFIG.ADMIN_EMAILS.map(e => e.toLowerCase().trim()));
+  mappingRows.forEach(r => { if (r.spoc) emails.add(r.spoc); if (r.manager) emails.add(r.manager); if (r.head) emails.add(r.head); });
+  document.getElementById("allEmails").innerHTML =
+    [...emails].sort().map(e => '<option value="' + e + '">').join("");
+  document.getElementById("viewAsInput").addEventListener("keydown", ev => { if (ev.key === "Enter") applyViewAs(); });
+}
+
+function applyViewAs(){
+  const v = document.getElementById("viewAsInput").value.toLowerCase().trim();
+  if (v) applyView(v);
+}
+
+function resetView(){
+  document.getElementById("viewAsInput").value = "";
+  applyView(currentUser.email);
+}
+
+/* Render the dashboard as the given email sees it */
+function applyView(email){
+  email = email.toLowerCase().trim();
+  const testing = email !== currentUser.email;
+  const chip = document.getElementById("roleChip");
+  const scope = document.getElementById("scopeBar");
+  const tag = testing ? ' &nbsp;·&nbsp; <b style="color:var(--danger)">TESTING AS: ' + email + "</b>" : "";
+
+  if (isAdmin(email)){
+    chip.textContent = "Full Access";
+    scope.innerHTML = "Full dashboard access — no email filter applied" + tag;
+    renderFrame(CONFIG.DASHBOARD_URL);
+    return;
+  }
+
+  const access = resolveAccess(email, mappingRows);
+  if (!access){
+    chip.textContent = "No access";
+    scope.innerHTML = "<b>" + email + "</b> is not in the CS mapping sheet." + tag;
+    document.getElementById("mainArea").innerHTML =
+      '<div class="state"><h2>Access not configured</h2><p><b>' + email +
+      "</b> was not found in the CS mapping sheet. Please contact your admin to get mapped.</p></div>";
+    return;
+  }
+
+  chip.textContent = access.role;
+  scope.innerHTML =
+    'Viewing data for <b>' + access.emails.length + '</b> mapped ID' + (access.emails.length > 1 ? "s" : "") +
+    ' &nbsp;·&nbsp; <a onclick="toggleEmails()">show/hide list</a>' + tag +
+    '<div id="emailList">' + access.emails.join(" &nbsp;•&nbsp; ") + "</div>";
+  renderFrame(buildDashboardUrl(access.roles, email));
+}
+
+function toggleEmails(){
+  const el = document.getElementById("emailList");
+  el.style.display = el.style.display === "block" ? "none" : "block";
+}
+
+function renderFrame(src){
+  const main = document.getElementById("mainArea");
+  main.innerHTML = "";
+  const pane = document.createElement("div");
+  pane.className = "tab-pane active";
+  const iframe = document.createElement("iframe");
+  iframe.src = src;
+  pane.appendChild(iframe);
+  main.appendChild(pane);
+}
+</script>
+</body>
+</html>
